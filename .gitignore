@@ -4,6 +4,7 @@ backend/__pycache__/
 **/__pycache__/
 *.py[cod]
 backend/.env
+backend/data/llm_logs/
 
 # Node
 frontend/node_modules/
