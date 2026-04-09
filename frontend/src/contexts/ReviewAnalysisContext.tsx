@@ -48,6 +48,7 @@ type ReviewAnalysisContextValue = {
   /** Canlı takip popup açık (inceleme veya tamamlanmayı bekleme). */
   liveTrackingOpen: boolean
   activeReviewSummary: ActiveReviewSummary | null
+  lastScriptSql: string | null
   liveProgress: LiveProgressSnapshot | null
   reviewError: string | null
   results: ObjectReviewResult[]
@@ -84,6 +85,7 @@ export function ReviewAnalysisProvider({ children }: { children: ReactNode }) {
   const [liveTrackingOpen, setLiveTrackingOpen] = useState(false)
   const [activeReviewSummary, setActiveReviewSummary] =
     useState<ActiveReviewSummary | null>(null)
+  const [lastScriptSql, setLastScriptSql] = useState<string | null>(null)
   const [liveProgress, setLiveProgress] =
     useState<LiveProgressSnapshot | null>(null)
   const [reviewError, setReviewError] = useState<string | null>(null)
@@ -148,6 +150,7 @@ export function ReviewAnalysisProvider({ children }: { children: ReactNode }) {
     setReviewError(null)
     setFalsePositives({})
     setActiveReviewSummary(null)
+    setLastScriptSql(null)
     setLiveProgress(null)
     setReviewing(false)
     setAnalysisCompletePending(false)
@@ -180,6 +183,7 @@ export function ReviewAnalysisProvider({ children }: { children: ReactNode }) {
     setResultsModalOpen(false)
     setCanReturnToLiveFromResults(false)
     setActiveReviewSummary({ kind: 'db', database: databaseLabel, targets })
+    setLastScriptSql(null)
     setLiveProgress(initial)
     setFalsePositives({})
     abortControllerRef.current?.abort()
@@ -263,6 +267,7 @@ export function ReviewAnalysisProvider({ children }: { children: ReactNode }) {
     setResultsModalOpen(false)
     setCanReturnToLiveFromResults(false)
     setActiveReviewSummary({ kind: 'script', label: displayLabel })
+    setLastScriptSql(trimmed)
     setLiveProgress(initial)
     setFalsePositives({})
     abortControllerRef.current?.abort()
@@ -331,6 +336,7 @@ export function ReviewAnalysisProvider({ children }: { children: ReactNode }) {
       analysisCompletePending,
       liveTrackingOpen,
       activeReviewSummary,
+      lastScriptSql,
       liveProgress,
       reviewError,
       results,
@@ -354,6 +360,7 @@ export function ReviewAnalysisProvider({ children }: { children: ReactNode }) {
       analysisCompletePending,
       liveTrackingOpen,
       activeReviewSummary,
+      lastScriptSql,
       liveProgress,
       reviewError,
       results,

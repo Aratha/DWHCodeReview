@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -38,6 +39,14 @@ def log_timestamp_iso() -> str:
 
 def append_entry(entry: dict) -> None:
     """Dosyaya tek satır JSON ekler."""
+    # Varsayılan: ham request/response gövdelerini kaydetme (kurumsal veri güvenliği).
+    keep_full = (os.environ.get("LLM_LOG_FULL_PAYLOADS", "false").strip().lower() in ("1", "true", "yes", "on"))
+    if not keep_full:
+        safe = dict(entry)
+        for k in ("request", "response_body", "response_text"):
+            if k in safe:
+                safe.pop(k, None)
+        entry = safe
     _ensure_dir()
     line = json.dumps(entry, ensure_ascii=False, default=str) + "\n"
     with _lock:

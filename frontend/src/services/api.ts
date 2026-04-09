@@ -57,6 +57,7 @@ export type ObjectReviewResult = {
   object_type: string
   /** Catalog veritabanı (çoklu DB seçiminde satır başına) */
   database?: string
+  source_sql?: string | null
   /** Her yayınlanmış kural için PASS/FAIL/UNKNOWN (yeni LLM biçimi) */
   rule_checks?: RuleCheck[]
   violations: Violation[]
@@ -376,6 +377,26 @@ export async function postScriptReview(
   }
   const data = await res.json()
   return data.results as ObjectReviewResult[]
+}
+
+export async function postObjectDefinition(
+  body: Pick<ObjectReviewResult, 'database' | 'schema' | 'name' | 'object_type'>,
+): Promise<string | null> {
+  const res = await fetch(`${apiBase()}/api/object-definition`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      database: (body.database ?? '').trim(),
+      schema: body.schema,
+      name: body.name,
+      object_type: body.object_type,
+    }),
+  })
+  if (!res.ok) {
+    throw new Error(await readApiError(res))
+  }
+  const data = (await res.json()) as { sql?: string | null }
+  return data.sql ?? null
 }
 
 export type LlmLogMeta = {

@@ -62,6 +62,17 @@ class ScriptReviewRequest(BaseModel):
     )
 
 
+class ObjectDefinitionRequest(BaseModel):
+    database: str = Field(..., min_length=1)
+    schema: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
+    object_type: str = Field(..., min_length=1)
+
+
+class ObjectDefinitionResponse(BaseModel):
+    sql: str | None = None
+
+
 Severity = Literal["LOW", "MEDIUM", "HIGH"]
 
 
@@ -98,6 +109,7 @@ class ObjectReviewResult(BaseModel):
     )
     rule_checks: list[RuleCheckItem] = Field(default_factory=list)
     violations: list[ViolationItem] = Field(default_factory=list)
+    source_sql: str | None = None
     error: str | None = None
     parse_warning: str | None = None
 
@@ -115,6 +127,9 @@ class LlmConfigResponse(BaseModel):
     llm_model: str
     sql_review_llm_model: str
     llm_http_trust_env: bool
+    llm_enforce_private_network: bool
+    llm_allow_public_hosts: str
+    llm_log_full_payloads: bool
     sql_review_max_concurrent_rules: int = Field(ge=1, le=512)
     api_key_set: bool
 
@@ -129,4 +144,7 @@ class LlmConfigUpdate(BaseModel):
     sql_review_llm_model: str | None = None
     llm_api_key: str | None = None
     llm_http_trust_env: bool | None = None
+    llm_enforce_private_network: bool | None = None
+    llm_allow_public_hosts: str | None = None
+    llm_log_full_payloads: bool | None = None
     sql_review_max_concurrent_rules: int | None = Field(None, ge=1, le=512)

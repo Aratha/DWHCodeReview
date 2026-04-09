@@ -17,7 +17,14 @@ $Host.UI.RawUI.WindowTitle = "DWH Code Review - starting"
 function Stop-ProcessTree {
     param([int]$ProcessId)
     if ($ProcessId -le 0) { return }
-    & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
+    # taskkill stderr (ör. PID yok) Stop modunda terminating olur; yut.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    try {
+        & taskkill.exe /PID $ProcessId /T /F 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $prev
+    }
 }
 
 function Stop-ListenersOnPort {
@@ -106,7 +113,12 @@ Stop-DwhProjectProcesses -ProjectRoot $Root
 Write-Host "=== SQL Code Review starting ===" -ForegroundColor Cyan
 
 if (-not (Test-Path "$Root\backend\.env")) {
-    Write-Host "Warning: backend\.env missing. Example: copy backend\.env.example backend\.env" -ForegroundColor Yellow
+    if (Test-Path "$Root\backend\.env.example") {
+        Copy-Item "$Root\backend\.env.example" "$Root\backend\.env" -Force
+        Write-Host "Created backend\.env from backend\.env.example" -ForegroundColor Yellow
+    } else {
+        Write-Host "Warning: backend\.env missing. Example: copy backend\.env.example backend\.env" -ForegroundColor Yellow
+    }
 }
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
@@ -151,6 +163,27 @@ $backendProc = Start-Process -FilePath $py `
     -PassThru `
     -WindowStyle Hidden
 
+function Wait-BackendHealth {
+    param(
+        [string]$Url = "http://127.0.0.1:8000/api/health",
+        [int]$MaxSeconds = 25
+    )
+    $deadline = (Get-Date).AddSeconds($MaxSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
+            if ($resp.StatusCode -eq 200) { return $true }
+        } catch {
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    return $false
+}
+
+if (-not (Wait-BackendHealth)) {
+    throw "Backend health check failed: http://127.0.0.1:8000/api/health"
+}
+
 try {
     Set-Location "$Root\frontend"
     if (-not (Test-Path "node_modules")) {
@@ -165,6 +198,7 @@ try {
     Write-Host "  API:    http://127.0.0.1:8000  (reload on code change)"
     Write-Host "  UI:     http://localhost:5173  (Vite HMR)"
     Write-Host "  Stop:   press Ctrl+C in this window"
+    Write-Host "  Health: http://127.0.0.1:8000/api/health"
     Write-Host ""
 
     npm run dev

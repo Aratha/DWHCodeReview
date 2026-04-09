@@ -1,9 +1,12 @@
 import asyncio
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import time
+from urllib.parse import urlparse
 from typing import Any
 
 import httpx
@@ -28,6 +31,62 @@ from services.llm_log import append_entry, log_timestamp_iso, new_log_id
 logger = logging.getLogger(__name__)
 
 
+def _is_private_or_tailscale_ip(ip_text: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_text)
+    except ValueError:
+        return False
+    # RFC1918 + loopback/link-local + ULA + Tailscale CGNAT (100.64.0.0/10)
+    if ip.is_private or ip.is_loopback or ip.is_link_local:
+        return True
+    return ip in ipaddress.ip_network("100.64.0.0/10")
+
+
+def _enforce_llm_network_policy(settings, url: str) -> None:
+    if not bool(getattr(settings, "llm_enforce_private_network", True)):
+        return
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").strip()
+    if not host:
+        raise ValueError("LLM URL host çözümlenemedi.")
+
+    allow_raw = str(getattr(settings, "llm_allow_public_hosts", "") or "")
+    allow_hosts = {h.strip().lower() for h in allow_raw.split(",") if h.strip()}
+    if host.lower() in allow_hosts:
+        return
+
+    # Host doğrudan IP ise doğrudan kontrol et.
+    if _is_private_or_tailscale_ip(host):
+        return
+    try:
+        ipaddress.ip_address(host)
+        raise ValueError(
+            f"LLM hedefi private/Tailscale ağında değil: {host}. "
+            "Kurumsal politika gereği cloud/public çıkış engellendi."
+        )
+    except ValueError:
+        # hostname ise resolve edilen tüm IP'ler private/tailscale olmalı.
+        pass
+
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or 80, proto=socket.IPPROTO_TCP)
+    except OSError as e:
+        raise ValueError(f"LLM host DNS çözümlenemedi: {host} ({e})") from e
+    ips: set[str] = set()
+    for info in infos:
+        sockaddr = info[4]
+        if sockaddr and len(sockaddr) >= 1:
+            ips.add(str(sockaddr[0]))
+    if not ips:
+        raise ValueError(f"LLM host için IP çözümlenemedi: {host}")
+    bad = [ip for ip in ips if not _is_private_or_tailscale_ip(ip)]
+    if bad:
+        raise ValueError(
+            f"LLM hedefi public IP'ye çözülüyor ({', '.join(sorted(bad))}). "
+            "Kurumsal politika gereği cloud/public çıkış engellendi."
+        )
+
+
 def _loads_llm_json(text: str) -> Any:
     """LLM çıktısı: string alanlarında kaçışsız satır sonu / kontrol karakterleri olabilir; strict=False ile çöz."""
     return json.loads(text, strict=False)
@@ -41,14 +100,23 @@ def _loads_llm_json_first(text: str) -> Any:
     if s.startswith("\ufeff"):
         s = s.lstrip("\ufeff").strip()
     dec = json.JSONDecoder()
-    i = 0
-    while i < len(s) and s[i].isspace():
-        i += 1
-    while i < len(s) and s[i] not in "{[":
-        i += 1
-    if i >= len(s):
+    # Bazı modeller yanıt içinde örnek JSON'lar veya backtick içinde geçersiz JSON parçaları ekleyebilir.
+    # Bu durumda ilk "{" / "[" gerçek çıktı olmayabilir; bu yüzden tüm aday başlangıçları dene.
+    starts: list[int] = []
+    for j, ch in enumerate(s):
+        if ch == "{" or ch == "[":
+            starts.append(j)
+    if not starts:
         raise json.JSONDecodeError("Expecting value", s, 0)
-    return dec.raw_decode(s, i)[0]
+    last_err: json.JSONDecodeError | None = None
+    for i in starts:
+        try:
+            return dec.raw_decode(s, i)[0]
+        except json.JSONDecodeError as e:
+            last_err = e
+            continue
+    assert last_err is not None
+    raise last_err
 
 
 def _try_loads_llm_json_first(text: str) -> object | None:
@@ -1079,20 +1147,49 @@ def parse_review_response(
 
 
     if text.startswith("[") or re.search(r"\[[\s\S]*\]", text):
-
+        # Eski biçim: kök JSON dizi. Bunu kural bazlı sonuçlara dönüştürüp UI'da parse_warning
+        # yerine ilgili kuralın durumunu üret.
         violations, warn = parse_violations_json(raw)
 
-        legacy = (
+        ordered = list(iter_rule_ids_ordered(bundle))
+        rid, tier = ordered[0] if ordered else ("", "normal")
+        sev = "HIGH" if tier == "critical" else "LOW"
 
-            "Eski çıktı biçimi: yalnızca ihlaller listelendi; kural bazlı PASS/FAIL yok."
+        if warn and not violations:
+            # JSON hiç çözülemediyse: UNKNOWN, ama parse_warning döndürme (UI'da toplu uyarı olmasın).
+            rc = RuleCheckItem(
+                rule_id=rid,
+                tier=tier,
+                status="UNKNOWN",
+                description=warn[:2000],
+            )
+            return [rc], [], None
 
+        if violations:
+            first = violations[0]
+            rc = RuleCheckItem(
+                rule_id=rid,
+                tier=tier,
+                status="FAIL",
+                severity=first.severity or sev,
+                decision_basis="direct_evidence",
+                description=(first.description or "İhlal tespit edildi.")[:500],
+                line_reference=first.line_reference,
+                code_snippet=(first.code_snippet or "")[:500],
+            )
+            return [rc], violations, None
+
+        rc = RuleCheckItem(
+            rule_id=rid,
+            tier=tier,
+            status="PASS",
+            severity="",
+            decision_basis="absence_of_evidence",
+            description="İhlal bulunmadı.",
+            line_reference="",
+            code_snippet="",
         )
-
-        if warn:
-
-            legacy = f"{warn} {legacy}"
-
-        return [], violations, legacy
+        return [rc], [], None
 
 
 
@@ -1146,8 +1243,11 @@ def _llm_chat_url_api_v1(settings) -> str:
 
 def _llm_chat_url(settings) -> str:
     if _resolved_llm_chat_api(settings) == "api_v1_chat":
-        return _llm_chat_url_api_v1(settings)
-    return _llm_chat_url_openai(settings)
+        out = _llm_chat_url_api_v1(settings)
+    else:
+        out = _llm_chat_url_openai(settings)
+    _enforce_llm_network_policy(settings, out)
+    return out
 
 
 def _openapi_style_error_message(body: object) -> str | None:
@@ -1175,13 +1275,21 @@ def _llm_connect_error_hint(
     request_url: str = "",
 ) -> str:
     """Bağlantı hatalarında ortam ve hedef URL'ye göre kısa ipucu (loglarda proxy yoksa yanıltıcı olmayan metin)."""
-    msg = str(exc).strip()
+    msg = str(exc).strip() or exc.__class__.__name__
     if not (isinstance(exc, httpx.ConnectError) or "All connection attempts failed" in msg):
         return msg
 
     url = (request_url or "").strip()
     if settings is not None and not url:
         url = _llm_chat_url(settings)
+
+    if isinstance(exc, (httpx.ReadTimeout, httpx.ConnectTimeout, TimeoutError)) or (
+        "ReadTimeout" in msg or "timed out" in msg.lower()
+    ):
+        return (
+            f"LLM isteği zaman aşımına uğradı (hedef: {url}). "
+            "LM Studio çalışıyor mu, model yüklü mü, ağ gecikmesi veya güvenlik duvarı engeli var mı kontrol edin."
+        )
 
     proxy_any = bool(
         os.environ.get("HTTP_PROXY")
@@ -1239,15 +1347,26 @@ def _brief_llm_error_for_ui(msg: str) -> str:
 
 def _join_message_parts(parts: list) -> str | None:
     """LM Studio / Qwen vb.: output: [ { type, content }, ... ]"""
-    chunks: list[str] = []
-    for part in parts:
-        if not isinstance(part, dict):
-            continue
+    msg_chunks: list[str] = []
+    other_chunks: list[str] = []
+
+    def _take_from_part(dst: list[str], part: dict) -> None:
         for k in ("content", "text"):
             c = part.get(k)
             if isinstance(c, str) and c.strip():
-                chunks.append(c)
-                break
+                dst.append(c)
+                return
+
+    for part_any in parts:
+        if not isinstance(part_any, dict):
+            continue
+        t = str(part_any.get("type") or "").strip().lower()
+        if t == "message":
+            _take_from_part(msg_chunks, part_any)
+        else:
+            _take_from_part(other_chunks, part_any)
+
+    chunks = msg_chunks or other_chunks
     if not chunks:
         return None
     return "\n".join(chunks).strip()
@@ -2054,23 +2173,21 @@ async def review_sql(
                 numbered_sql=num2,
             )
 
-            raw_a, err_a, meta_a, raw_b, err_b, meta_b = await asyncio.gather(
-                _llm_chat_completion(
-                    client=http_client,
-                    settings=settings,
-                    user_content=uc1,
-                    object_label=object_label,
-                    rule_id=f"{rid}#1/2",
-                    progress=progress,
-                ),
-                _llm_chat_completion(
-                    client=http_client,
-                    settings=settings,
-                    user_content=uc2,
-                    object_label=object_label,
-                    rule_id=f"{rid}#2/2",
-                    progress=progress,
-                ),
+            raw_a, err_a, meta_a = await _llm_chat_completion(
+                client=http_client,
+                settings=settings,
+                user_content=uc1,
+                object_label=object_label,
+                rule_id=f"{rid}#1/2",
+                progress=progress,
+            )
+            raw_b, err_b, meta_b = await _llm_chat_completion(
+                client=http_client,
+                settings=settings,
+                user_content=uc2,
+                object_label=object_label,
+                rule_id=f"{rid}#2/2",
+                progress=progress,
             )
 
             ok_merge = err_a is None and err_b is None and bool(
@@ -2134,9 +2251,22 @@ async def review_sql(
                 )
             return rc_m, viol_m, warn_m
 
+        max_concurrent = int(
+            getattr(settings, "sql_review_max_concurrent_rules", 32) or 32
+        )
+        if max_concurrent < 1:
+            max_concurrent = 1
+        sem = asyncio.Semaphore(max_concurrent)
+
+        async def run_bounded(
+            rid: str, tier: str, rule_index: int
+        ) -> tuple[RuleCheckItem, list[ViolationItem], str | None]:
+            async with sem:
+                return await one_rule(rid, tier, rule_index)
+
         results = await asyncio.gather(
             *[
-                one_rule(rid, tier, i + 1)
+                run_bounded(rid, tier, i + 1)
                 for i, (rid, tier) in enumerate(ordered)
             ]
         )
@@ -2148,9 +2278,19 @@ async def review_sql(
 
         conn_groups: dict[str, list[str]] = {}
         other_warns: list[str] = []
+        _legacy_markers = (
+            "PASS/FAIL",
+            "Eski çıktı biçimi",
+            "Eski",
+            "çıktı biçimi",
+        )
         for (rid, _), r in zip(ordered, results):
             w = r[2]
             if not w:
+                continue
+            # Eski-format uyarısı artık kural sonuçlarına mapleniyor; UI parse_warning'ini kirletmesin.
+            wl = str(w)
+            if any(m in wl for m in _legacy_markers):
                 continue
             if _is_llm_connection_error_msg(w):
                 brief = _brief_llm_error_for_ui(w)
@@ -2165,6 +2305,8 @@ async def review_sql(
                 warn_parts.append(f"[{', '.join(rids)}] {brief}")
         warn_parts.extend(other_warns)
         parse_warning = "; ".join(warn_parts) if warn_parts else None
+        if parse_warning and ("PASS/FAIL" in parse_warning or "çıktı biçimi" in parse_warning):
+            parse_warning = None
 
         return rule_checks_all, violations_all, parse_warning
 

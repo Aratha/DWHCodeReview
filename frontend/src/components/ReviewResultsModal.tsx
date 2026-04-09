@@ -10,6 +10,8 @@ export function ReviewResultsModal() {
     closeResultsModal,
     backToLiveFromResults,
     canReturnToLiveFromResults,
+    activeReviewSummary,
+    lastScriptSql,
     reviewError,
     results,
     falsePositives,
@@ -101,7 +103,15 @@ export function ReviewResultsModal() {
 
         {results.length > 0 ? (
           <footer className="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-700">
-            <ExportMenu results={results} falsePositives={falsePositives} />
+            <ExportMenu
+              results={results}
+              falsePositives={falsePositives}
+              sqlText={
+                activeReviewSummary?.kind === 'script'
+                  ? (lastScriptSql ?? '')
+                  : undefined
+              }
+            />
           </footer>
         ) : null}
       </div>

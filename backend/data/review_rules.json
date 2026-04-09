@@ -5,6 +5,51 @@
         "id": "Kural01",
         "text": "KURAL ADI:\nTEMP_TABLE_NOLOCK_USAGE\n\nAÇIKLAMA:\nTemp tablolar (# ile başlayan tablolar), veri kaynağı olarak FROM veya JOIN ifadelerinde kullanılırken WITH (NOLOCK) ile birlikte kullanılamaz.\n\nKURAL MANTIĞI:\nBir kullanımın ihlal sayılması için aşağıdaki iki koşul birlikte sağlanmalıdır:\n1. Tablo adı # ile başlayan bir temp tablo olmalıdır\n2. Bu temp tablo FROM veya JOIN ifadesinde kaynak tablo olarak kullanılırken aynı kullanımda WITH (NOLOCK) içermelidir\n\nİHLAL ÖRNEKLERİ:\n- SELECT * FROM #TMP WITH (NOLOCK)\n- SELECT * FROM #TMP T WITH (NOLOCK)\n- SELECT * FROM dbo.A A JOIN #TMP B WITH (NOLOCK) ON A.Id = B.Id\n- LEFT JOIN #TMP X WITH (NOLOCK) ON ...\n\nİHLAL OLMAYAN DURUMLAR:\n- SELECT ... INTO #TMP ...\n- INSERT INTO #TMP ...\n- CREATE TABLE #TMP ...\n- DROP TABLE #TMP\n- TRUNCATE TABLE #TMP\n- FROM #TMP\n- JOIN #TMP T ON ...\n- EXISTS (SELECT 1 FROM #TMP T WHERE ...)\n- Fiziksel tablolar üzerinde WITH (NOLOCK) kullanımı\n- Temp tablonun yalnızca isminin geçmesi\n\nÖNEMLİ NOTLAR:\n- Temp tablonun hedef (target) olarak kullanılması ihlal değildir\n- Sadece kaynak (source) olarak kullanıldığı durumlar değerlendirilmelidir\n- Temp tablo adı ile WITH (NOLOCK) arasında alias olabilir\n  (örn: FROM #TMP1 T1 WITH (NOLOCK))\n\nBEKLENEN ÇIKTI:\nSadece ihlal tespit edilen durumlar raporlanmalıdır\n\nWITH (NOLOCK) yalnızca yazıldığı tablo referansı için geçerlidir; aynı FROM/JOIN zincirindeki diğer tablolar için ihlal oluşturmaz",
         "requires_metadata": false
+      },
+      {
+        "id": "Kural08",
+        "text": "KURAL ADI: SCD_VALIDITY_FIELDS_USAGE\n\nAÇIKLAMA:\nSCD (Slowly Changing Dimension) tablolarında bir kaydın belirli bir andaki veya güncel halini bulmak için geçerlilik tarihleri ve aktiflik bayrağı birlikte yönetilmelidir.\n\nKURAL MANTIĞI:\n\nGeçmişe dönük (Point-in-time) analizlerde sorgulanan tarih parametresi BETWEEN EdwValidFrom AND EdwValidUntil aralığında olmalıdır.\n\nGüncel (en son) kayıt çekilirken ActiveFlag = 1 filtresi mutlaka kullanılmamalıdır (ActiveFlag kullanımı ihlaldir).\n\nİHLAL ÖRNEKLERİ:\n\nActiveFlag = 1\n\nİHLAL OLMAYAN DURUMLAR:\n\nWHERE @TargetDate BETWEEN EdwValidFrom AND EdwValidUntil\nWHERE GETDATE() BETWEEN EdwValidFrom AND EdwValidUntil",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural09",
+        "text": "KURAL ADI: DM_VIEW_NK_ID_MAPPING\n\nAÇIKLAMA:\nDM (Data Mart) katmanındaki asıl view'larda son kullanıcıya veri ambarı teknik ID'leri gösterilmemelidir.\n\nKURAL MANTIĞI:\n\nView kolonları arasında Skid, SurrogateKey veya veri ambarına özgü teknik ID değerleri bulunmamalıdır.\n\nİş biriminin kullandığı Natural Key (NK) alanları, ID isimlendirmesiyle (alias) sunulmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nSELECT CustomerPartyId FROM DM.V_MUSTERI\n\nSELECT CustomerPartyNk FROM DM.V_MUSTERI (ID takma adı eksik)\n\nİHLAL OLMAYAN DURUMLAR:\n\nSELECT CustomerPartyNk AS CustomerId FROM DM.V_MUSTERI\n\nSELECT AbcNk AS AbcId FROM DM.V_MUSTERI",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural04",
+        "text": "KURAL ADI: INNER_JOIN_AFTER_LEFT_JOIN\n\nAÇIKLAMA:\nBir sorgu zincirinde LEFT JOIN kullanımından sonra gelen bir INNER JOIN, sol taraftaki (outer) sonuç kümesini daraltarak LEFT JOIN'i fiilen INNER JOIN'e dönüştürür. Bu durum veri kaybına neden olabilir.\n\nKURAL MANTIĞI:\n\nBir JOIN bloğu içerisinde LEFT JOIN ifadesinden sonra aynı zincirde INNER JOIN gelmemelidir.\n\nEğer gelmesi gerekiyorsa, INNER JOIN yapılan tablo LEFT JOIN'den önceye alınmalı veya LEFT JOIN bloğu parantez/CTE içine alınmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nFROM TableA A LEFT JOIN TableB B ON ... INNER JOIN TableC C ON B.Id = C.Id (C tablosu B üzerinden joinlendiği için A'nın kayıtlarını da kısıtlar).",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural10",
+        "text": "KURAL ADI:NO_SUBSELECT_IN_SELECT_CLAUSE\n\nAÇIKLAMA:\nSELECT ve FROM anahtar kelimeleri arasında, kolon bazlı alt sorgu (subselect) kullanımı performans nedeniyle yasaktır.\n\nKURAL MANTIĞI:\n\nÇıktı kolonları listesinde parantez içinde başka bir SELECT ifadesi bulunmamalıdır.\n\nBu veri ihtiyacı LEFT JOIN veya OUTER APPLY ile karşılanmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nSELECT A.Ad, (SELECT TOP 1 Sehir FROM B WHERE B.Id = A.Id) FROM A",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural11",
+        "text": "KURAL ADI:\nNK_NUMERIC_CAST_REQUIREMENT\n\nAÇIKLAMA:\nNK alanları üzerinden yapılan sıralama (ORDER BY) veya ortalama alma (AVG) gibi işlemlerde veri tipinin sayısal olduğu kontrol edilmelidir.\n\nKURAL MANTIĞI:\n\nNK alanların hepsi VARCHAR'dır. String tabanlı NK alanları matematiksel işleme giriyorsa veya sıralanıyorsa,\n\nCAST veya CONVERT ile sayısal bir tipe dönüştürüldüğünden emin olunmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nORDER BY AccountNK \n\nSUM(CustomerPartyNk)\n\nAVG(CustomerPartyNk)",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural05",
+        "text": "KURAL ADI: COUNT_*_USAGE\n\nAÇIKLAMA:\nPerformans ve standart gereği satır sayma işlemlerinde COUNT(*) yerine COUNT(1) kullanılmalıdır.\n\nKURAL MANTIĞI:\nSorgu içerisinde COUNT(*) ifadesi tespit edilirse bu bir ihlaldir.\n\nİHLAL ÖRNEKLERİ:\n\nSELECT COUNT(*) FROM TableA\n\nHAVING COUNT(*) > 1",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural06",
+        "text": "KURAL ADI: DISTINCT_MINIMIZATION\n\nAÇIKLAMA:\nSorgularda gereksiz DISTINCT kullanımı performans kaybına yol açar. Join mantığı doğru kurulmuşsa DISTINCT kullanımına ihtiyaç duyulmamalıdır.\nDISTINCT kullanımı, verinin doğası gereği zaten tekil olduğu durumlarda (PK seçimi gibi) yasaktır.\n\nKURAL MANTIĞI:\n\nSELECT ifadesinden hemen sonra gelen DISTINCT anahtar kelimesi incelenmelidir.\n\nEğer sorgu bir birincil anahtar (PK) içeriyorsa veya joinler bire-bir ise DISTINCT kaldırılmalıdır.\n\n\nİHLAL ÖRNEKLERİ:\n\nSELECT DISTINCT TaxNumber FROM Table",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural07",
+        "text": "KURAL ADI: UNION_VS_UNION_ALL\n\nAÇIKLAMA:\nVerilerin tekil olduğundan emin olunan veya tekilleştirme gerekmeyen durumlarda UNION yerine daha performanslı olan UNION ALL kullanılmalıdır.\n\nKURAL MANTIĞI:\nSorgu içerisinde UNION kullanımı görüldüğünde, bunun neden UNION ALL olmadığı sorgulanmalıdır.\n\nİHLAL ÖRNEKLERİ:\nSELECT ID FROM T1 UNION SELECT ID FROM T2",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural12",
+        "text": "KURAL ADI:NULL_REPLACEMENT_WITH_DUMMY\n\nAÇIKLAMA:\nSorgularda IS NULL kontrolü yerine, ETL'de atanmış olan -99 dummy değerleri üzerinden işlem yapılmalıdır.\n\nKURAL MANTIĞI:\nWHERE Column IS NULL ifadesi yerine WHERE Column = -99 kullanımı tercih edilmelidir.",
+        "requires_metadata": false
       }
     ],
     "normal": [
@@ -21,6 +66,51 @@
         "id": "Kural01",
         "text": "KURAL ADI:\nTEMP_TABLE_NOLOCK_USAGE\n\nAÇIKLAMA:\nTemp tablolar (# ile başlayan tablolar), veri kaynağı olarak FROM veya JOIN ifadelerinde kullanılırken WITH (NOLOCK) ile birlikte kullanılamaz.\n\nKURAL MANTIĞI:\nBir kullanımın ihlal sayılması için aşağıdaki iki koşul birlikte sağlanmalıdır:\n1. Tablo adı # ile başlayan bir temp tablo olmalıdır\n2. Bu temp tablo FROM veya JOIN ifadesinde kaynak tablo olarak kullanılırken aynı kullanımda WITH (NOLOCK) içermelidir\n\nİHLAL ÖRNEKLERİ:\n- SELECT * FROM #TMP WITH (NOLOCK)\n- SELECT * FROM #TMP T WITH (NOLOCK)\n- SELECT * FROM dbo.A A JOIN #TMP B WITH (NOLOCK) ON A.Id = B.Id\n- LEFT JOIN #TMP X WITH (NOLOCK) ON ...\n\nİHLAL OLMAYAN DURUMLAR:\n- SELECT ... INTO #TMP ...\n- INSERT INTO #TMP ...\n- CREATE TABLE #TMP ...\n- DROP TABLE #TMP\n- TRUNCATE TABLE #TMP\n- FROM #TMP\n- JOIN #TMP T ON ...\n- EXISTS (SELECT 1 FROM #TMP T WHERE ...)\n- Fiziksel tablolar üzerinde WITH (NOLOCK) kullanımı\n- Temp tablonun yalnızca isminin geçmesi\n\nÖNEMLİ NOTLAR:\n- Temp tablonun hedef (target) olarak kullanılması ihlal değildir\n- Sadece kaynak (source) olarak kullanıldığı durumlar değerlendirilmelidir\n- Temp tablo adı ile WITH (NOLOCK) arasında alias olabilir\n  (örn: FROM #TMP1 T1 WITH (NOLOCK))\n\nBEKLENEN ÇIKTI:\nSadece ihlal tespit edilen durumlar raporlanmalıdır\n\nWITH (NOLOCK) yalnızca yazıldığı tablo referansı için geçerlidir; aynı FROM/JOIN zincirindeki diğer tablolar için ihlal oluşturmaz",
         "requires_metadata": false
+      },
+      {
+        "id": "Kural08",
+        "text": "KURAL ADI: SCD_VALIDITY_FIELDS_USAGE\n\nAÇIKLAMA:\nSCD (Slowly Changing Dimension) tablolarında bir kaydın belirli bir andaki veya güncel halini bulmak için geçerlilik tarihleri ve aktiflik bayrağı birlikte yönetilmelidir.\n\nKURAL MANTIĞI:\n\nGeçmişe dönük (Point-in-time) analizlerde sorgulanan tarih parametresi BETWEEN EdwValidFrom AND EdwValidUntil aralığında olmalıdır.\n\nGüncel (en son) kayıt çekilirken ActiveFlag = 1 filtresi mutlaka kullanılmamalıdır (ActiveFlag kullanımı ihlaldir).\n\nİHLAL ÖRNEKLERİ:\n\nActiveFlag = 1\n\nİHLAL OLMAYAN DURUMLAR:\n\nWHERE @TargetDate BETWEEN EdwValidFrom AND EdwValidUntil\nWHERE GETDATE() BETWEEN EdwValidFrom AND EdwValidUntil",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural09",
+        "text": "KURAL ADI: DM_VIEW_NK_ID_MAPPING\n\nAÇIKLAMA:\nDM (Data Mart) katmanındaki asıl view'larda son kullanıcıya veri ambarı teknik ID'leri gösterilmemelidir.\n\nKURAL MANTIĞI:\n\nView kolonları arasında Skid, SurrogateKey veya veri ambarına özgü teknik ID değerleri bulunmamalıdır.\n\nİş biriminin kullandığı Natural Key (NK) alanları, ID isimlendirmesiyle (alias) sunulmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nSELECT CustomerPartyId FROM DM.V_MUSTERI\n\nSELECT CustomerPartyNk FROM DM.V_MUSTERI (ID takma adı eksik)\n\nİHLAL OLMAYAN DURUMLAR:\n\nSELECT CustomerPartyNk AS CustomerId FROM DM.V_MUSTERI\n\nSELECT AbcNk AS AbcId FROM DM.V_MUSTERI",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural04",
+        "text": "KURAL ADI: INNER_JOIN_AFTER_LEFT_JOIN\n\nAÇIKLAMA:\nBir sorgu zincirinde LEFT JOIN kullanımından sonra gelen bir INNER JOIN, sol taraftaki (outer) sonuç kümesini daraltarak LEFT JOIN'i fiilen INNER JOIN'e dönüştürür. Bu durum veri kaybına neden olabilir.\n\nKURAL MANTIĞI:\n\nBir JOIN bloğu içerisinde LEFT JOIN ifadesinden sonra aynı zincirde INNER JOIN gelmemelidir.\n\nEğer gelmesi gerekiyorsa, INNER JOIN yapılan tablo LEFT JOIN'den önceye alınmalı veya LEFT JOIN bloğu parantez/CTE içine alınmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nFROM TableA A LEFT JOIN TableB B ON ... INNER JOIN TableC C ON B.Id = C.Id (C tablosu B üzerinden joinlendiği için A'nın kayıtlarını da kısıtlar).",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural10",
+        "text": "KURAL ADI:NO_SUBSELECT_IN_SELECT_CLAUSE\n\nAÇIKLAMA:\nSELECT ve FROM anahtar kelimeleri arasında, kolon bazlı alt sorgu (subselect) kullanımı performans nedeniyle yasaktır.\n\nKURAL MANTIĞI:\n\nÇıktı kolonları listesinde parantez içinde başka bir SELECT ifadesi bulunmamalıdır.\n\nBu veri ihtiyacı LEFT JOIN veya OUTER APPLY ile karşılanmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nSELECT A.Ad, (SELECT TOP 1 Sehir FROM B WHERE B.Id = A.Id) FROM A",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural11",
+        "text": "KURAL ADI:\nNK_NUMERIC_CAST_REQUIREMENT\n\nAÇIKLAMA:\nNK alanları üzerinden yapılan sıralama (ORDER BY) veya ortalama alma (AVG) gibi işlemlerde veri tipinin sayısal olduğu kontrol edilmelidir.\n\nKURAL MANTIĞI:\n\nNK alanların hepsi VARCHAR'dır. String tabanlı NK alanları matematiksel işleme giriyorsa veya sıralanıyorsa,\n\nCAST veya CONVERT ile sayısal bir tipe dönüştürüldüğünden emin olunmalıdır.\n\nİHLAL ÖRNEKLERİ:\n\nORDER BY AccountNK \n\nSUM(CustomerPartyNk)\n\nAVG(CustomerPartyNk)",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural05",
+        "text": "KURAL ADI: COUNT_*_USAGE\n\nAÇIKLAMA:\nPerformans ve standart gereği satır sayma işlemlerinde COUNT(*) yerine COUNT(1) kullanılmalıdır.\n\nKURAL MANTIĞI:\nSorgu içerisinde COUNT(*) ifadesi tespit edilirse bu bir ihlaldir.\n\nİHLAL ÖRNEKLERİ:\n\nSELECT COUNT(*) FROM TableA\n\nHAVING COUNT(*) > 1",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural06",
+        "text": "KURAL ADI: DISTINCT_MINIMIZATION\n\nAÇIKLAMA:\nSorgularda gereksiz DISTINCT kullanımı performans kaybına yol açar. Join mantığı doğru kurulmuşsa DISTINCT kullanımına ihtiyaç duyulmamalıdır.\nDISTINCT kullanımı, verinin doğası gereği zaten tekil olduğu durumlarda (PK seçimi gibi) yasaktır.\n\nKURAL MANTIĞI:\n\nSELECT ifadesinden hemen sonra gelen DISTINCT anahtar kelimesi incelenmelidir.\n\nEğer sorgu bir birincil anahtar (PK) içeriyorsa veya joinler bire-bir ise DISTINCT kaldırılmalıdır.\n\n\nİHLAL ÖRNEKLERİ:\n\nSELECT DISTINCT TaxNumber FROM Table",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural07",
+        "text": "KURAL ADI: UNION_VS_UNION_ALL\n\nAÇIKLAMA:\nVerilerin tekil olduğundan emin olunan veya tekilleştirme gerekmeyen durumlarda UNION yerine daha performanslı olan UNION ALL kullanılmalıdır.\n\nKURAL MANTIĞI:\nSorgu içerisinde UNION kullanımı görüldüğünde, bunun neden UNION ALL olmadığı sorgulanmalıdır.\n\nİHLAL ÖRNEKLERİ:\nSELECT ID FROM T1 UNION SELECT ID FROM T2",
+        "requires_metadata": false
+      },
+      {
+        "id": "Kural12",
+        "text": "KURAL ADI:NULL_REPLACEMENT_WITH_DUMMY\n\nAÇIKLAMA:\nSorgularda IS NULL kontrolü yerine, ETL'de atanmış olan -99 dummy değerleri üzerinden işlem yapılmalıdır.\n\nKURAL MANTIĞI:\nWHERE Column IS NULL ifadesi yerine WHERE Column = -99 kullanımı tercih edilmelidir.",
+        "requires_metadata": false
       }
     ],
     "normal": [
@@ -31,5 +121,5 @@
       }
     ]
   },
-  "published_at": "2026-04-02T20:36:24Z"
+  "published_at": "2026-04-06T19:58:47Z"
 }

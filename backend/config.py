@@ -27,11 +27,19 @@ class Settings(BaseSettings):
     # httpx: True ise sistem HTTP(S)_PROXY kullanilir. Ağdaki LLM (LAN IP) için False önerilir — aksi halde
     # "All connection attempts failed" sık görülür. Kurumsal proxy üzerinden bulut API ise true yapin.
     llm_http_trust_env: bool = False
+    # Kurumsal güvenlik: varsayılan olarak LLM hedefi private/Tailscale ağında olmalı.
+    llm_enforce_private_network: bool = True
+    # İstisna hostname listesi (virgülle): private olmayan ancak izin verilen hedefler.
+    llm_allow_public_hosts: str = ""
+    # LLM günlüklerinde ham request/response gövdelerini sakla mı? (öneri: false)
+    llm_log_full_payloads: bool = False
     # Eski ayar; artık kullanılmıyor (tüm kural istekleri paralel). Geriye dönük uyumluluk için tutulur.
     sql_review_max_concurrent_rules: int = 32
     # SQL bu karakter sayısını aşınca nesne iki parçada analiz edilir (bağlam taşması riskini azaltır).
     sql_review_two_part_threshold_chars: int = 45000
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Boş değilse /api uçları X-API-Key ile korunur.
+    api_access_token: str = ""
 
 
 def get_settings() -> Settings:

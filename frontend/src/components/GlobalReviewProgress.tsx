@@ -2,10 +2,18 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { AccordionSection } from './AccordionSection'
 import { ruleCheckKey, violationKey } from './ReviewResults'
-import { downloadReviewResultsCsv } from './ExportMenu'
+import {
+  buildReviewResultsSql,
+  buildSqlReviewCommentHeader,
+  downloadReviewResultsCsv,
+} from './ExportMenu'
 import { PRODUCT_NAME } from '../brand'
 import { useReviewAnalysis } from '../contexts/ReviewAnalysisContext'
-import type { ObjectReviewResult, Violation } from '../services/api'
+import {
+  postObjectDefinition,
+  type ObjectReviewResult,
+  type Violation,
+} from '../services/api'
 import {
   formatRuleTokenLine,
   ruleCheckIsPass,
@@ -307,7 +315,7 @@ function RuleAccordionRow({
         >
           {running ? (
             <p className="font-medium text-zinc-600 dark:text-zinc-400">
-              Yanıt üretiliyor (token sayısı / tahmin)
+              Yanıt üretiliyor
             </p>
           ) : null}
           {showLlmSummary ? (
@@ -541,6 +549,7 @@ export function GlobalReviewProgress() {
     cancelReview,
     hasReviewOutput,
     results,
+    lastScriptSql,
     falsePositives,
     onFalsePositiveChange,
     dismissLiveTracking,
@@ -571,6 +580,9 @@ export function GlobalReviewProgress() {
       : reviewError
         ? 'İnceleme hata ile sona erdi; ayrıntılar yukarıda.'
         : 'İnceleme tamamlandı.'
+  const sqlForExport = (
+    (lastScriptSql ?? '').trim() || buildReviewResultsSql(results)
+  ).trim()
 
   const exportCsv = () => {
     const database =
@@ -580,6 +592,34 @@ export function GlobalReviewProgress() {
       reviewError: results.length === 0 ? reviewError : undefined,
       database,
     })
+  }
+
+  const exportSql = async () => {
+    let text = sqlForExport
+    if (!text) {
+      const parts: string[] = []
+      for (const r of results) {
+        if (!(r.database ?? '').trim()) continue
+        try {
+          const sql = await postObjectDefinition(r)
+          if (!sql?.trim()) continue
+          const header = `-- [${r.database}] ${r.schema}.${r.name} (${r.object_type})`
+          parts.push(`${header}\n${sql.trim()}`)
+        } catch {
+          // Tek nesnede hata olsa da diğerlerini indirmeye devam et.
+        }
+      }
+      text = parts.join('\n\nGO\n\n').trim()
+    }
+    if (!text) return
+    const commentHeader = buildSqlReviewCommentHeader(results)
+    const sqlFile = `${commentHeader}\n\n${text}`.trim()
+    const blob = new Blob([sqlFile], { type: 'application/sql;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `sql-review-source-${Date.now()}.sql`
+    a.click()
+    URL.revokeObjectURL(a.href)
   }
 
   return (
@@ -683,6 +723,15 @@ export function GlobalReviewProgress() {
             {completedFooterLine}
           </p>
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {hasReviewOutput ? (
+              <button
+                type="button"
+                onClick={exportSql}
+                className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus-visible:outline-zinc-500"
+              >
+                SQL indir
+              </button>
+            ) : null}
             {hasReviewOutput ? (
               <button
                 type="button"

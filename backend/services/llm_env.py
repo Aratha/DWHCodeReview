@@ -18,6 +18,9 @@ FIELD_TO_ENV = {
     "sql_review_llm_model": "SQL_REVIEW_LLM_MODEL",
     "llm_api_key": "LLM_API_KEY",
     "llm_http_trust_env": "LLM_HTTP_TRUST_ENV",
+    "llm_enforce_private_network": "LLM_ENFORCE_PRIVATE_NETWORK",
+    "llm_allow_public_hosts": "LLM_ALLOW_PUBLIC_HOSTS",
+    "llm_log_full_payloads": "LLM_LOG_FULL_PAYLOADS",
     "sql_review_max_concurrent_rules": "SQL_REVIEW_MAX_CONCURRENT_RULES",
 }
 
@@ -37,6 +40,9 @@ def read_llm_snapshot() -> dict:
         "llm_model": s.llm_model,
         "sql_review_llm_model": s.sql_review_llm_model,
         "llm_http_trust_env": s.llm_http_trust_env,
+        "llm_enforce_private_network": s.llm_enforce_private_network,
+        "llm_allow_public_hosts": s.llm_allow_public_hosts,
+        "llm_log_full_payloads": s.llm_log_full_payloads,
         "sql_review_max_concurrent_rules": s.sql_review_max_concurrent_rules,
         "api_key_set": bool((s.llm_api_key or "").strip()),
     }
@@ -68,6 +74,12 @@ def merge_llm_into_dotenv(updates: dict[str, str | bool | int | None]) -> None:
                 continue
             env_patch[env_upper] = val
         elif field == "llm_http_trust_env":
+            assert isinstance(val, bool)
+            env_patch[env_upper] = _bool_env(val)
+        elif field == "llm_enforce_private_network":
+            assert isinstance(val, bool)
+            env_patch[env_upper] = _bool_env(val)
+        elif field == "llm_log_full_payloads":
             assert isinstance(val, bool)
             env_patch[env_upper] = _bool_env(val)
         elif field == "sql_review_max_concurrent_rules":

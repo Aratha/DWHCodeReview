@@ -72,6 +72,7 @@ async def _review_one(
             database=database,
             rule_checks=[],
             violations=[],
+            source_sql=None,
             error=f"Database error: {e}",
         )
 
@@ -84,6 +85,7 @@ async def _review_one(
             database=database,
             rule_checks=[],
             violations=[],
+            source_sql=None,
             error="No definition returned (object missing or permissions).",
         )
 
@@ -134,6 +136,7 @@ async def _review_one(
         database=database,
         rule_checks=rule_checks,
         violations=violations,
+        source_sql=sql,
         error=None,
         parse_warning=parse_warning,
     )
@@ -213,6 +216,7 @@ async def review_pasted_sql(
         database="",
         rule_checks=rule_checks,
         violations=violations,
+        source_sql=sql,
         error=None,
         parse_warning=parse_warning,
     )

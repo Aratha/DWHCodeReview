@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -18,6 +18,8 @@ from models.schemas import (
     DbObjectRow,
     LlmConfigResponse,
     LlmConfigUpdate,
+    ObjectDefinitionRequest,
+    ObjectDefinitionResponse,
     ObjectSelection,
     ReviewRequest,
     ReviewResponse,
@@ -29,6 +31,7 @@ from services.review_orchestrator import review_pasted_sql, run_reviews
 from services.llm_log import clear_log, get_entry_by_id, list_entries_meta
 from services.llm_env import merge_llm_into_dotenv, read_llm_snapshot
 from services.rules_store import RuleBundle, RulesState, load_state, publish_draft, save_draft
+from services.sql_fetcher import fetch_definition
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -63,6 +66,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def api_key_guard(request: Request, call_next):
+    """API_ACCESS_TOKEN tanımlıysa /api uçlarını X-API-Key ile koru."""
+    path = request.url.path or ""
+    if not path.startswith("/api"):
+        return await call_next(request)
+    if path == "/api/health":
+        return await call_next(request)
+
+    token = (get_settings().api_access_token or "").strip()
+    if token:
+        got = (request.headers.get("x-api-key") or "").strip()
+        if got != token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    return await call_next(request)
 
 
 @app.get("/")
@@ -331,3 +351,25 @@ async def post_review_script_stream(body: ScriptReviewRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/api/object-definition", response_model=ObjectDefinitionResponse)
+def post_object_definition(body: ObjectDefinitionRequest):
+    """Tek nesnenin tam SQL tanımını döndürür (SQL export için)."""
+    type_map = {
+        "PROCEDURE": "P",
+        "VIEW": "V",
+        "FUNCTION_SCALAR": "FN",
+        "FUNCTION_INLINE": "IF",
+        "FUNCTION_TABLE": "TF",
+        "FUNCTION_SQL_INLINE": "SF",
+    }
+    tc = type_map.get((body.object_type or "").strip().upper(), body.object_type)
+    try:
+        sql = fetch_definition(body.schema, body.name, tc, body.database)
+        return ObjectDefinitionResponse(sql=sql)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Object definition fetch failed")
+        raise HTTPException(status_code=500, detail=str(e)) from e

@@ -1,6 +1,6 @@
 import { PRODUCT_NAME } from '../brand'
 import { useReviewAnalysis } from '../contexts/ReviewAnalysisContext'
-import type { ObjectReviewResult } from '../services/api'
+import { postObjectDefinition, type ObjectReviewResult } from '../services/api'
 import {
   fpDatabaseForRow,
   ruleCheckKey,
@@ -10,6 +10,7 @@ import {
 type Props = {
   results: ObjectReviewResult[]
   falsePositives: Record<string, boolean>
+  sqlText?: string
 }
 
 function escapeCsvField(value: string | null | undefined): string {
@@ -22,6 +23,67 @@ function escapeCsvField(value: string | null | undefined): string {
 
 function csvLine(fields: string[]): string {
   return fields.map(escapeCsvField).join(',')
+}
+
+export function buildSqlReviewCommentHeader(
+  results: ObjectReviewResult[],
+): string {
+  const lines: string[] = []
+  lines.push('/*')
+  lines.push('SQL Review - Duzeltilmesi Gereken Yerler')
+  let issueCount = 0
+
+  for (const r of results) {
+    const db = (r.database ?? '').trim()
+    const obj = db
+      ? `[${db}] ${r.schema}.${r.name} (${r.object_type})`
+      : `${r.schema}.${r.name} (${r.object_type})`
+
+    const objectLines: string[] = []
+    for (const v of r.violations ?? []) {
+      const loc = (v.line_reference ?? '').trim() || 'Satir bilgisi yok'
+      const desc = (v.description ?? '').trim() || 'Aciklama yok'
+      objectLines.push(`- ${v.rule_id} | ${loc} | ${desc}`)
+    }
+
+    if (objectLines.length === 0) {
+      for (const rc of r.rule_checks ?? []) {
+        if ((rc.status ?? '').toUpperCase() !== 'FAIL') continue
+        const loc = (rc.line_reference ?? '').trim() || 'Satir bilgisi yok'
+        const desc = (rc.description ?? '').trim() || 'Aciklama yok'
+        objectLines.push(`- ${rc.rule_id} | ${loc} | ${desc}`)
+      }
+    }
+
+    if (objectLines.length === 0) continue
+    issueCount += objectLines.length
+    lines.push(``)
+    lines.push(`${obj}`)
+    for (const it of objectLines) {
+      lines.push(it)
+    }
+  }
+
+  if (issueCount === 0) {
+    lines.push('')
+    lines.push('Tespit edilen duzeltme maddesi yok.')
+  }
+  lines.push('*/')
+  return lines.join('\n')
+}
+
+export function buildReviewResultsSql(results: ObjectReviewResult[]): string {
+  const chunks: string[] = []
+  for (const r of results) {
+    const sql = (r.source_sql ?? '').trim()
+    if (!sql) continue
+    const db = (r.database ?? '').trim()
+    const header = db
+      ? `-- [${db}] ${r.schema}.${r.name} (${r.object_type})`
+      : `-- ${r.schema}.${r.name} (${r.object_type})`
+    chunks.push(`${header}\n${sql}`)
+  }
+  return chunks.join('\n\nGO\n\n').trim()
 }
 
 /** Canlı ekran / sonuç modalı ile aynı FP anahtarını yakalamak için olası varyantları dener. */
@@ -413,13 +475,14 @@ function buildHtmlReport(
   return parts.join('')
 }
 
-export function ExportMenu({ results, falsePositives }: Props) {
+export function ExportMenu({ results, falsePositives, sqlText }: Props) {
   if (results.length === 0) return null
 
   const { activeReviewSummary, liveProgress } = useReviewAnalysis()
   const database =
     liveProgress?.database ??
     (activeReviewSummary?.kind === 'db' ? activeReviewSummary.database : '')
+  const sourceSql = buildReviewResultsSql(results)
 
   const downloadJson = () => {
     const payload = buildPayload(results, falsePositives, { database })
@@ -447,8 +510,45 @@ export function ExportMenu({ results, falsePositives }: Props) {
     downloadReviewResultsCsv(results, falsePositives, { database })
   }
 
+  const downloadSql = async () => {
+    let text = ((sqlText ?? '').trim() || sourceSql).trim()
+    if (!text) {
+      const parts: string[] = []
+      for (const r of results) {
+        if (!(r.database ?? '').trim()) continue
+        try {
+          const sql = await postObjectDefinition(r)
+          if (!sql?.trim()) continue
+          const header = `-- [${r.database}] ${r.schema}.${r.name} (${r.object_type})`
+          parts.push(`${header}\n${sql.trim()}`)
+        } catch {
+          // Tek nesnede hata olsa da diğerlerini indirmeye devam et.
+        }
+      }
+      text = parts.join('\n\nGO\n\n').trim()
+    }
+    if (!text) return
+    const commentHeader = buildSqlReviewCommentHeader(results)
+    const sqlFile = `${commentHeader}\n\n${text}`.trim()
+    const blob = new Blob([sqlFile], { type: 'application/sql;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `sql-review-source-${Date.now()}.sql`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   return (
     <div className="flex flex-wrap gap-2">
+      {(sqlText?.trim() || sourceSql || results.length > 0) ? (
+        <button
+          type="button"
+          onClick={downloadSql}
+          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+        >
+          SQL indir
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={downloadCsv}

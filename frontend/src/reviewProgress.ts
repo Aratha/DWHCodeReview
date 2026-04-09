@@ -299,14 +299,14 @@ export function hydrateLiveProgressFromResults(
   }
 }
 
-/** Tek kural satırı için gösterilecek token metni (API veya tahmin). */
+/** Tek kural satırı için gösterilecek token metni (yalnızca API sayımı varsa). */
 export function formatRuleTokenLine(r: LiveRuleProgress): string {
   if (r.llmStreamTokens != null && r.llmStreamTokens > 0) {
     return `${r.llmStreamTokens.toLocaleString()} token`
   }
   const ch = r.llmStreamChars ?? 0
   if (ch > 0) {
-    return `~${Math.max(1, Math.ceil(ch / 4)).toLocaleString()} token (tahmini)`
+    return `~${Math.max(1, Math.ceil(ch / 4)).toLocaleString()} token`
   }
   if (r.status === 'running') {
     return '…'
