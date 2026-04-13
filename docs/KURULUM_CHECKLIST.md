@@ -46,7 +46,7 @@ Notlar:
 
 ## D) Kurulum ve Baslatma
 
-- [ ] Proje kokunde `.\start.ps1` calistirildi
+- [ ] README’deki komutlarla backend ve frontend başlatıldı
 - [ ] Backend ayaga kalkti (`/api/health`)
 - [ ] Frontend ayaga kalkti (`http://localhost:5173`)
 - [ ] Port 8000 dinlemede
@@ -101,8 +101,11 @@ Notlar:
 ## Ek: Hizli Komutlar
 
 ```powershell
-# Baslatma
-.\start.ps1
+# Backend (proje kokunden, bir terminal)
+# .\backend\.venv\Scripts\python.exe -m uvicorn main:app --app-dir .\backend --host 127.0.0.1 --port 8000 --reload
+
+# Frontend (baska terminal, frontend klasorunde)
+# npm run dev
 
 # Backend health
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/api/health

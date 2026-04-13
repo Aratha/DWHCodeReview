@@ -2,7 +2,7 @@
 
 SQL Server üzerindeki nesneleri (stored procedure, view, function vb.) seçerek veya yapıştırılan SQL ile **yayımlanmış kurallara göre** LLM destekli inceleme yapan; sonuçları web arayüzünde gösteren ve **CSV / SQL** olarak dışa aktarmayı destekleyen kurumsal bir araçtır.
 
-Bu depo, **Windows geliştirme ortamında** (PowerShell) minimum tıklama ile ayağa kalkacak şekilde düzenlenmiştir; üretimde ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
+Geliştirme için **Windows** üzerinde terminalden `uvicorn` ve `npm run dev` kullanılır (depoda toplu başlatıcı script yoktur). Üretimde ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
 
 ---
 
@@ -14,12 +14,11 @@ Bu depo, **Windows geliştirme ortamında** (PowerShell) minimum tıklama ile ay
 4. [Dokümantasyon haritası](#dokümantasyon-haritası)
 5. [Önkoşullar](#önkoşullar)
 6. [Hızlı başlangıç](#hızlı-başlangıç)
-7. [Manuel kurulum](#manuel-kurulum)
-8. [Ortam değişkenleri](#ortam-değişkenleri-backendenv)
-9. [REST API özeti](#rest-api-özeti)
-10. [Güvenlik ve kurumsal ortam](#güvenlik-ve-kurumsal-ortam)
-11. [Sorun giderme](#sorun-giderme)
-12. [Proje yapısı](#proje-yapısı)
+7. [Ortam değişkenleri](#ortam-değişkenleri-backendenv)
+8. [REST API özeti](#rest-api-özeti)
+9. [Güvenlik ve kurumsal ortam](#güvenlik-ve-kurumsal-ortam)
+10. [Sorun giderme](#sorun-giderme)
+11. [Proje yapısı](#proje-yapısı)
 
 ---
 
@@ -111,20 +110,42 @@ Get-OdbcDriver | Where-Object { $_.Name -match "SQL Server" }
 
 ## Hızlı başlangıç
 
-Depo kökünde (önerilen yöntem):
+Depoda `.ps1` / `.bat` gibi toplu başlatıcı dosyalar yoktur; geliştirme adımlarını doğrudan terminalden çalıştırın.
+
+### İlk kurulum (bir kez)
+
+Proje kökünde:
 
 ```powershell
-.\start.ps1
+Copy-Item .\backend\.env.example .\backend\.env
 ```
 
-`start.ps1` şunları yapar:
+`backend/.env` içinde SQL Server ve LLM alanlarını doldurun. Ardından:
 
-1. **8000** ve **5173** portlarındaki uygun süreçleri temizler (`scripts/dev-stop-common.ps1`).
-2. `backend\.env` yoksa `backend\.env.example` dosyasından oluşturur.
-3. `backend\.venv` yoksa oluşturur ve `requirements.txt` ile bağımlılıkları kurar/günceller.
-4. Backend’i **127.0.0.1:8000** üzerinde başlatır ve `/api/health` ile doğrular.
-5. Gerekirse `frontend` için `npm install` çalıştırır.
-6. Vite geliştirme sunucusunu başlatır (**Ctrl+C** ile durdurulunca backend de sonlandırılır).
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+cd ..\frontend
+npm install
+cd ..
+```
+
+### Çalıştırma (iki ayrı terminal)
+
+Proje **kökünde** açılmış bir terminalde backend:
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m uvicorn main:app --app-dir .\backend --host 127.0.0.1 --port 8000 --reload
+```
+
+İkinci terminalde ön yüz (`frontend` klasörü):
+
+```powershell
+cd frontend
+npm run dev
+```
 
 **Adresler:**
 
@@ -134,56 +155,24 @@ Depo kökünde (önerilen yöntem):
 | Arayüz | http://localhost:5173 |
 | Sağlık | http://127.0.0.1:8000/api/health |
 
-### Durdurma
-
-- `start.ps1` çalışırken: pencerede **Ctrl+C** (backend ile birlikte kapanır).
-- Ayrı kökte **`.\stop.ps1`** ile 8000 ve 5173 üzerindeki ilgili süreçler temizlenebilir.
-
----
-
-## Manuel kurulum
-
-Tek komut yerine adım adım kurmak için:
-
-### 1) Ortam dosyası
-
-```powershell
-Copy-Item .\backend\.env.example .\backend\.env
-```
-
-`backend/.env` içinde en azından bağlantı ve LLM alanlarını doldurun (aşağıdaki tabloya bakın).
-
-### 2) Backend sanal ortam
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-### 3) Backend çalıştırma
-
-```powershell
-cd ..
-.\backend\.venv\Scripts\python.exe -m uvicorn main:app --app-dir .\backend --host 127.0.0.1 --port 8000 --reload
-```
-
-### 4) Frontend
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-Sağlık kontrolü:
+### Sağlık kontrolü
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/api/health
 ```
 
 Beklenen örnek: `{"status":"ok","rules_api":true}` (alan adları sürüme göre değişebilir).
+
+### Durdurma ve portlar
+
+Her terminalde **Ctrl+C**. **8000** veya **5173** doluysa, ilgili süreci Görev Yöneticisi’nden sonlandırın veya örnek olarak:
+
+```powershell
+netstat -ano | findstr ":8000"
+netstat -ano | findstr ":5173"
+```
+
+çıktısındaki PID ile süreci kapatın (`taskkill /PID <pid> /F`).
 
 ---
 
@@ -257,7 +246,7 @@ EDR, DLP ve ağ izolasyonu için teknik notlar **[docs/ADMIN_GUIDE.md](docs/ADMI
 | Belirti | Olası çözüm |
 |---------|-------------|
 | `Node.js / npm not found` | Node.js LTS kurun, terminali yeniden açın |
-| `Failed to fetch` | Backend ayakta mı (`/api/health`); port çakışması için `start.ps1` veya `stop.ps1` |
+| `Failed to fetch` | Backend ayakta mı (`/api/health`); 8000/5173 port çakışmasını ve süreçleri kontrol edin |
 | LLM bağlantı hatası | `LLM_BASE_URL`, firewall, LM Studio dinleme adresi; private ağ politikası |
 | `ReadTimeout` | `SQL_REVIEW_MAX_CONCURRENT_RULES` düşürün; modelin yüklü olduğundan emin olun |
 | `All connection attempts failed` | Yanlış proxy: yerel LLM için `LLM_HTTP_TRUST_ENV=false` deneyin |
@@ -277,9 +266,6 @@ DWHCodeReview/
 │   └── services/
 ├── frontend/          # React + Vite
 ├── docs/              # Kullanıcı ve yönetici kılavuzları
-├── scripts/           # Geliştirme yardımcıları (ör. port temizliği)
-├── start.ps1
-├── stop.ps1
 └── README.md
 ```
 
@@ -297,4 +283,4 @@ Operasyonel onay için **[docs/KURULUM_CHECKLIST.md](docs/KURULUM_CHECKLIST.md)*
 
 ---
 
-**Özet:** `.\start.ps1` ile geliştirme ortamını ayağa kaldırın, `backend/.env` ile SQL Server ve LLM’i bağlayın, üretim ve güvenlik için **ADMIN_GUIDE** ve kontrol listesini takip edin.
+**Özet:** `backend/.env` ile SQL Server ve LLM’i yapılandırın; kökten `uvicorn`, `frontend` içinden `npm run dev` ile geliştirme ortamını çalıştırın; üretim ve güvenlik için **ADMIN_GUIDE** ve kontrol listesini takip edin.

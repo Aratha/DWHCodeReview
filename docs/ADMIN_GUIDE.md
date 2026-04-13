@@ -55,6 +55,6 @@ Beklenen: `{"status":"ok","rules_api":true}`
 
 - **LLM timeout / ReadTimeout:** Eşzamanlılığı düşürün; LM Studio’da modelin bellekte olduğundan emin olun; ağ gecikmesini kontrol edin.
 - **Bağlantı reddedildi:** Tailscale/firewall; LM Studio’nun doğru arayüzde dinlemesi.
-- **Eski API:** Eski `uvicorn` süreci kalmış olabilir; port 8000’i temizleyip `.\start.ps1` ile yeniden başlatın.
+- **Eski API:** Eski `uvicorn` süreci kalmış olabilir; port 8000’i temizleyip `README.md` içindeki backend komutuyla yeniden başlatın.
 
 Tam kurulum adımları için `README.md` ve operasyon onayı için `docs/KURULUM_CHECKLIST.md` dosyalarına bakın.
