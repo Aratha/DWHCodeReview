@@ -2,7 +2,7 @@
 
 SQL Server üzerindeki nesneleri (stored procedure, view, function vb.) seçerek veya yapıştırılan SQL ile **yayımlanmış kurallara göre** LLM destekli inceleme yapan; sonuçları web arayüzünde gösteren ve **CSV / SQL** olarak dışa aktarmayı destekleyen kurumsal bir araçtır.
 
-Geliştirme için **Windows** üzerinde kökteki `.bat` dosyaları (çift tık) veya terminalden `uvicorn` + `npm run dev` kullanılır. Üretimde ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
+**Windows**’ta kökteki `.bat` dosyaları ile yerel geliştirme; **Docker** ile paketlenmiş çalıştırma (`docker compose` veya `start-docker.bat`) desteklenir. Ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
 
 ---
 
@@ -82,6 +82,7 @@ flowchart LR
 | **Son kullanıcı** | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Günlük inceleme, menüler, dışa aktarma |
 | **Sistem yöneticisi** | Bu README + [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | Kurulum, LLM, güvenlik, EDR/DLP, proxy |
 | **Operasyon / IT** | [docs/KURULUM_CHECKLIST.md](docs/KURULUM_CHECKLIST.md) | Teslim onayı, yazdırılabilir kontrol listesi |
+| **Docker** | [docs/DOCKER.md](docs/DOCKER.md) | `docker compose`, nginx ön yüz, ODBC backend imajı |
 
 Arayüzde sol menüde **Kullanıcı** ve **Sistem** bölümleri ayrıdır; ağır sayfalar ihtiyaca göre yüklenir.
 
@@ -110,7 +111,17 @@ Get-OdbcDriver | Where-Object { $_.Name -match "SQL Server" }
 
 ## Hızlı başlangıç
 
-### Windows (çift tık)
+### Docker (tüm uygulama)
+
+| Dosya / komut | Ne yapar |
+|---------------|-----------|
+| `start-docker.bat` | `docker compose up --build` |
+| `stop-docker.bat` | `docker compose down` |
+| `docs/DOCKER.md` | `host.docker.internal`, sorun giderme |
+
+Ön yüz **http://localhost:8080**, API **http://localhost:8000**. Konteynerden ana makinedeki SQL/LLM için `.env` içinde `host.docker.internal` kullanın.
+
+### Windows yerel (çift tık, hot-reload)
 
 | Dosya | Ne yapar |
 |-------|-----------|
@@ -119,7 +130,7 @@ Get-OdbcDriver | Where-Object { $_.Name -match "SQL Server" }
 | `start-backend.bat` | Sadece API (`:8000`) |
 | `start-frontend.bat` | Sadece arayüz (`:5173`) |
 
-Önce `backend/.env` içinde SQL Server ve LLM ayarlarını doldurun (`setup-local.bat` örnek dosyayı kopyalar).
+Önce `backend/.env` içinde SQL Server ve LLM ayarlarını doldurun (`setup-local.bat` veya Docker başlatıcısı örnek dosyayı kopyalayabilir).
 
 ### İlk kurulum (bir kez, terminal)
 
@@ -266,14 +277,15 @@ EDR, DLP ve ağ izolasyonu için teknik notlar **[docs/ADMIN_GUIDE.md](docs/ADMI
 
 ```
 DWHCodeReview/
-├── backend/           # FastAPI uygulaması
+├── backend/           # FastAPI uygulaması (+ Dockerfile)
 │   ├── main.py
 │   ├── config.py
 │   ├── data/          # İnceleme kuralları (ör. review_rules.json)
 │   ├── db/
 │   ├── models/
 │   └── services/
-├── frontend/          # React + Vite
+├── frontend/          # React + Vite (+ Dockerfile, nginx.conf)
+├── docker-compose.yml
 ├── docs/              # Kullanıcı ve yönetici kılavuzları
 └── README.md
 ```
