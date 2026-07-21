@@ -1,6 +1,6 @@
 # DWHCodeReview Kurulum Checklist (PDF Hazir)
 
-Bu dokuman IT/operasyon ekipleri icin kurulum-onay formu olarak tasarlanmistir.
+Bu dokuman IT/operasyon ekipleri icin kurulum-onay formu olarak tasarlanmistir. Calistirma modeli: **Docker Compose only**.
 
 ---
 
@@ -15,11 +15,9 @@ Bu dokuman IT/operasyon ekipleri icin kurulum-onay formu olarak tasarlanmistir.
 
 ## B) Onkosul Kontrolu
 
-- [ ] Python 3.10+ kurulu
-- [ ] Node.js 18+ kurulu
-- [ ] npm calisiyor
-- [ ] ODBC Driver 17/18 kurulu
-- [ ] SQL Server erisimi mevcut
+- [ ] Docker Engine / Docker Desktop kurulu ve calisiyor
+- [ ] `docker compose version` basarili
+- [ ] SQL Server erisimi mevcut (konteynerden erisim yolu net)
 - [ ] LLM endpoint erisimi mevcut
 
 Notlar:
@@ -30,7 +28,7 @@ Notlar:
 
 ## C) Konfigurasyon Kontrolu (`backend/.env`)
 
-- [ ] `MSSQL_CONNECTION_STRING` girildi
+- [ ] `MSSQL_CONNECTION_STRING` girildi (Docker: `host.docker.internal` veya ag IP)
 - [ ] `LLM_CHAT_API` dogru secildi (`api_v1_chat` / `openai`)
 - [ ] `LLM_BASE_URL` veya `LLM_CHAT_URL` girildi
 - [ ] `LLM_MODEL` girildi
@@ -46,11 +44,11 @@ Notlar:
 
 ## D) Kurulum ve Baslatma
 
-- [ ] README’deki komutlarla backend ve frontend başlatıldı
-- [ ] Backend ayaga kalkti (`/api/health`)
-- [ ] Frontend ayaga kalkti (`http://localhost:5173`)
-- [ ] Port 8000 dinlemede
-- [ ] Port 5173 dinlemede
+- [ ] `docker compose up --build` (veya `-d`) calistirildi
+- [ ] `docker compose ps` — `backend` healthy, `web` running
+- [ ] Backend health: `/api/health` basarili
+- [ ] Arayuz: `http://localhost:8080` aciliyor
+- [ ] Port 8080 / 8000 publish edildi
 
 ---
 
@@ -73,7 +71,6 @@ Notlar:
 - [ ] Public/cloud cikis engeli dogrulandi
 - [ ] API key korumasi beklenen sekilde calisiyor
 - [ ] Loglarda hassas payload tutulmuyor
-- [ ] CORS sadece izinli originler
 
 ---
 
@@ -82,9 +79,7 @@ Notlar:
 - Hata var mi?: [ ] Yok  [ ] Var
 - Hata Ozeti:
   - ................................................................
-  - ................................................................
 - Alinan Aksiyon:
-  - ................................................................
   - ................................................................
 
 ---
@@ -101,17 +96,9 @@ Notlar:
 ## Ek: Hizli Komutlar
 
 ```powershell
-# Backend (proje kokunden, bir terminal)
-# .\backend\.venv\Scripts\python.exe -m uvicorn main:app --app-dir .\backend --host 127.0.0.1 --port 8000 --reload
-
-# Frontend (baska terminal, frontend klasorunde)
-# npm run dev
-
-# Backend health
+docker compose up --build -d
+docker compose ps
+docker compose logs backend
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/api/health
-
-# Port kontrol
-netstat -ano | findstr :8000
-netstat -ano | findstr :5173
+docker compose down
 ```
-

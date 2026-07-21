@@ -1,5 +1,7 @@
 # Docker ile çalıştırma
 
+Bu proje **yalnızca Docker Compose** ile çalıştırılır. Yerel Python venv veya `npm run dev` akışı desteklenmez.
+
 Ön koşul: [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/macOS) veya Linux üzerinde Docker Engine + Compose.
 
 ## 1) Ortam dosyası
@@ -18,7 +20,7 @@ LLM_HTTP_TRUST_ENV=false
 
 `LLM_ENFORCE_PRIVATE_NETWORK=true` iken `host.docker.internal` genelde private IP’ye çözülür. Cloud LLM için `LLM_ALLOW_PUBLIC_HOSTS` ve `docs/ADMIN_GUIDE.md` bölümlerine bakın.
 
-Arayüz **http://localhost:8080** üzerinden nginx ile servis edilir; tarayıcı `/api` isteklerini aynı origin üzerinden backend’e iletir (ekstra CORS ayarı gerekmez).
+Arayüz **http://localhost:8080** üzerinden nginx ile servis edilir; tarayıcı `/api` isteklerini aynı origin üzerinden backend’e iletir.
 
 ## 2) Derleme ve başlatma
 
@@ -41,11 +43,11 @@ docker compose up --build -d
 
 Durdurmak: `Ctrl+C` veya `docker compose down`.
 
-Windows’ta çift tık: kökte `start-docker.bat`.
+Windows: `start-docker.bat` / `stop-docker.bat`.
 
 ## 3) Kalıcı veri
 
-`docker-compose.yml` içinde `./backend/data` → `/app/data` bağlanır (inceleme kuralları ve taslak/yayın snapshot’ları konteyner yeniden oluşsa da kalır). `backend/data/llm_logs` host’ta `.gitignore` ile takip dışıdır.
+`docker-compose.yml` içinde `./backend/data` → `/app/data` bağlanır (inceleme kuralları konteyner yeniden oluşsa da kalır). `backend/data/llm_logs` host’ta `.gitignore` ile takip dışıdır.
 
 ## 4) Sorun giderme
 
@@ -57,11 +59,10 @@ Windows’ta çift tık: kökte `start-docker.bat`.
 | Ön yüz 502 | `docker compose ps`; `docker compose logs backend` |
 | `web` healthy bekliyor | Backend healthcheck; `/api/health` ve `.env` doğruluğu |
 
-## 5) Yerel geliştirme ile fark
+## 5) İmaj güncelleme
 
-| Mod | Arayüz | Backend |
-|-----|--------|---------|
-| `.bat` / `npm run dev` | Vite `:5173` | Uvicorn `:8000` (reload) |
-| Docker | nginx `:8080` (statik build) | Uvicorn konteyner `:8000` |
+Kod veya bağımlılık değişince:
 
-Geliştirmede hot-reload için `.bat` akışını kullanın; Docker, production’a yakın paketlenmiş çalıştırma içindir.
+```powershell
+docker compose up --build -d
+```

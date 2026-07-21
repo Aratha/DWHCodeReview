@@ -2,7 +2,7 @@
 
 SQL Server üzerindeki nesneleri (stored procedure, view, function vb.) seçerek veya yapıştırılan SQL ile **yayımlanmış kurallara göre** LLM destekli inceleme yapan; sonuçları web arayüzünde gösteren ve **CSV / SQL** olarak dışa aktarmayı destekleyen kurumsal bir araçtır.
 
-**Windows**’ta kökteki `.bat` dosyaları ile yerel geliştirme; **Docker** ile paketlenmiş çalıştırma (`docker compose` veya `start-docker.bat`) desteklenir. Ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
+Uygulama **yalnızca Docker** ile çalıştırılır (`docker compose`). Ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
 
 ---
 
@@ -40,23 +40,21 @@ SQL Server üzerindeki nesneleri (stored procedure, view, function vb.) seçerek
 
 ```mermaid
 flowchart LR
+  subgraph docker [Docker Compose]
+    WEB[nginx + React build]
+    API[FastAPI + Uvicorn]
+  end
   subgraph client [Tarayıcı]
-    UI[React + Vite]
+    UI[Kullanıcı]
   end
-  subgraph backend [Backend]
-    API[FastAPI]
-    Rules[Kural motoru]
-    LLM[LLM istemcisi httpx]
-  end
-  subgraph data [Sistemler]
+  subgraph data [Dış sistemler]
     MSSQL[(SQL Server)]
     LM[LLM sunucusu]
   end
-  UI -->|HTTP /api| API
+  UI -->|http://localhost:8080| WEB
+  WEB -->|/api proxy| API
   API --> MSSQL
-  API --> Rules
-  Rules --> LLM
-  LLM -->|HTTPS veya HTTP| LM
+  API --> LM
 ```
 
 **Akış (özet):** kullanıcı nesne veya SQL seçer → backend tanımı okur veya metni alır → yayımlanmış kurallar için LLM çağrıları yapılır → sonuçlar API ile arayüze döner.
@@ -67,11 +65,12 @@ flowchart LR
 
 | Katman | Bileşen | Not |
 |--------|---------|-----|
-| Backend | Python **3.10+** (öneri: 3.12), FastAPI, Uvicorn | `backend/requirements.txt` sabit sürümler |
-| Veritabanı | **pyodbc**, ODBC Driver 17/18 for SQL Server | Bağlantı dizesi `MSSQL_*` |
-| HTTP istemcisi | **httpx** | LLM çağrıları; proxy için `LLM_HTTP_TRUST_ENV` |
-| Frontend | **Node.js 18+**, React, Vite | Geliştirme: `npm run dev` (port **5173**) |
-| Yapılandırma | **pydantic-settings**, `.env** | `backend/.env` |
+| Çalıştırma | **Docker Compose** | `backend` + `web` servisleri |
+| Backend | Python **3.12**, FastAPI, Uvicorn | İmajda **ODBC Driver 18** |
+| Veritabanı | **pyodbc** | `MSSQL_CONNECTION_STRING` |
+| HTTP istemcisi | **httpx** | LLM; proxy için `LLM_HTTP_TRUST_ENV` |
+| Frontend | React, Vite build | Konteynerde **nginx** ile statik servis |
+| Yapılandırma | **pydantic-settings**, `backend/.env` | Compose `env_file` |
 
 ---
 
@@ -80,59 +79,25 @@ flowchart LR
 | Rol | Belge | İçerik |
 |-----|--------|--------|
 | **Son kullanıcı** | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Günlük inceleme, menüler, dışa aktarma |
-| **Sistem yöneticisi** | Bu README + [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | Kurulum, LLM, güvenlik, EDR/DLP, proxy |
-| **Operasyon / IT** | [docs/KURULUM_CHECKLIST.md](docs/KURULUM_CHECKLIST.md) | Teslim onayı, yazdırılabilir kontrol listesi |
-| **Docker** | [docs/DOCKER.md](docs/DOCKER.md) | `docker compose`, nginx ön yüz, ODBC backend imajı |
-
-Arayüzde sol menüde **Kullanıcı** ve **Sistem** bölümleri ayrıdır; ağır sayfalar ihtiyaca göre yüklenir.
+| **Sistem yöneticisi** | Bu README + [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | LLM, güvenlik, EDR/DLP, proxy |
+| **Operasyon / IT** | [docs/KURULUM_CHECKLIST.md](docs/KURULUM_CHECKLIST.md) | Teslim onayı |
+| **Docker ayrıntı** | [docs/DOCKER.md](docs/DOCKER.md) | `host.docker.internal`, volume, sorun giderme |
 
 ---
 
 ## Önkoşullar
 
-Aşağıdakilerin kurulu ve erişilebilir olduğundan emin olun:
+1. **Docker Engine** ve **Docker Compose** (Windows: Docker Desktop)
+2. **SQL Server** erişimi (ODBC bağlantı dizesi hazır)
+3. **LLM endpoint** (LM Studio, iç ağ IP’si veya Tailscale)
 
-1. **Python 3.10+** (geliştirme için PATH’te `python` veya `py`)
-2. **Node.js 18+** ve `npm`
-3. **ODBC Driver 17 veya 18 for SQL Server**
-4. **SQL Server** erişimi (bağlantı dizesi hazır)
-5. **LLM endpoint** (ör. LM Studio, iç ağ IP’si veya Tailscale)
-
-Hızlı kontrol (PowerShell):
-
-```powershell
-python --version
-node --version
-npm --version
-Get-OdbcDriver | Where-Object { $_.Name -match "SQL Server" }
-```
+Konteyner içinden ana makinedeki SQL/LLM için bağlantı dizesi ve URL’de **`host.docker.internal`** kullanın (ayrıntı: [docs/DOCKER.md](docs/DOCKER.md)).
 
 ---
 
 ## Hızlı başlangıç
 
-### Docker (tüm uygulama)
-
-| Dosya / komut | Ne yapar |
-|---------------|-----------|
-| `start-docker.bat` | `docker compose up --build` |
-| `stop-docker.bat` | `docker compose down` |
-| `docs/DOCKER.md` | `host.docker.internal`, sorun giderme |
-
-Ön yüz **http://localhost:8080**, API **http://localhost:8000**. Konteynerden ana makinedeki SQL/LLM için `.env` içinde `host.docker.internal` kullanın.
-
-### Windows yerel (çift tık, hot-reload)
-
-| Dosya | Ne yapar |
-|-------|-----------|
-| `setup-local.bat` | Bir kez: `.env`, Python venv, `pip install`, `npm install` |
-| `start-app.bat` | Backend + frontend pencerelerini açar, tarayıcıyı açar |
-| `start-backend.bat` | Sadece API (`:8000`) |
-| `start-frontend.bat` | Sadece arayüz (`:5173`) |
-
-Önce `backend/.env` içinde SQL Server ve LLM ayarlarını doldurun (`setup-local.bat` veya Docker başlatıcısı örnek dosyayı kopyalayabilir).
-
-### İlk kurulum (bir kez, terminal)
+### 1) Ortam dosyası
 
 Proje kökünde:
 
@@ -140,59 +105,44 @@ Proje kökünde:
 Copy-Item .\backend\.env.example .\backend\.env
 ```
 
-`backend/.env` içinde SQL Server ve LLM alanlarını doldurun. Ardından:
+`backend/.env` içinde SQL Server ve LLM alanlarını doldurun (Docker için `host.docker.internal`).
+
+### 2) Başlatma
 
 ```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-cd ..\frontend
-npm install
-cd ..
+docker compose up --build
 ```
 
-### Çalıştırma (iki ayrı terminal)
-
-Proje **kökünde** açılmış bir terminalde backend:
+Arka planda:
 
 ```powershell
-.\backend\.venv\Scripts\python.exe -m uvicorn main:app --app-dir .\backend --host 127.0.0.1 --port 8000 --reload
+docker compose up --build -d
 ```
 
-İkinci terminalde ön yüz (`frontend` klasörü):
+Windows’ta isteğe bağlı: `start-docker.bat` / `stop-docker.bat`.
 
-```powershell
-cd frontend
-npm run dev
-```
-
-**Adresler:**
+### 3) Adresler
 
 | Servis | URL |
 |--------|-----|
-| API | http://127.0.0.1:8000 |
-| Arayüz | http://localhost:5173 |
-| Sağlık | http://127.0.0.1:8000/api/health |
+| Arayüz | http://localhost:8080 |
+| API | http://localhost:8000 |
+| Sağlık | http://localhost:8000/api/health |
+| OpenAPI | http://localhost:8000/docs |
 
-### Sağlık kontrolü
+### 4) Sağlık kontrolü
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/api/health
 ```
 
-Beklenen örnek: `{"status":"ok","rules_api":true}` (alan adları sürüme göre değişebilir).
-
-### Durdurma ve portlar
-
-Her terminalde **Ctrl+C**. **8000** veya **5173** doluysa, ilgili süreci Görev Yöneticisi’nden sonlandırın veya örnek olarak:
+### 5) Durdurma
 
 ```powershell
-netstat -ano | findstr ":8000"
-netstat -ano | findstr ":5173"
+docker compose down
 ```
 
-çıktısındaki PID ile süreci kapatın (`taskkill /PID <pid> /F`).
+Kurallar `./backend/data` volume ile kalıcıdır (compose tanımı).
 
 ---
 
@@ -213,24 +163,23 @@ netstat -ano | findstr ":5173"
 | `SQL_REVIEW_MAX_CONCURRENT_RULES` | Eşzamanlı kural sayısı (ör. 4–8) |
 | `LLM_READ_TIMEOUT_SECONDS` / `LLM_REQUEST_RETRIES` | Ağ ve sıra gecikmeleri için |
 | `SQL_REVIEW_TWO_PART_THRESHOLD_CHARS` | Çok uzun SQL için iki parçalı analiz eşiği |
-| `CORS_ORIGINS` | İzinli tarayıcı kökenleri |
+| `CORS_ORIGINS` | Doğrudan `:8000` erişiminde gerekir; nginx `:8080` üzerinden `/api` için genelde kritik değil |
 | `API_ACCESS_TOKEN` | Doluysa `/api/*` için `X-API-Key` ( `/api/health` hariç ) |
 | `API_ADMIN_TOKEN` | Yönetim uçları için `X-Admin-Key` |
 | `API_RATE_LIMIT_*` | İnceleme uçlarında hız limiti |
 
-Örnek kurumsal iskelet:
+Örnek (Docker Desktop, SQL/LLM ana makinede):
 
 ```env
-MSSQL_CONNECTION_STRING=Driver={ODBC Driver 18 for SQL Server};Server=...;Database=...;Trusted_Connection=yes;Encrypt=yes;TrustServerCertificate=yes;
+MSSQL_CONNECTION_STRING=Driver={ODBC Driver 18 for SQL Server};Server=host.docker.internal,1433;Database=...;Trusted_Connection=no;UID=...;PWD=...;Encrypt=yes;TrustServerCertificate=yes;
 LLM_CHAT_API=api_v1_chat
-LLM_BASE_URL=http://100.x.x.x:1234/v1
+LLM_BASE_URL=http://host.docker.internal:1234/v1
 LLM_MODEL=your/model
 SQL_REVIEW_LLM_MODEL=your/model
 LLM_HTTP_TRUST_ENV=false
 LLM_ENFORCE_PRIVATE_NETWORK=true
 LLM_LOG_FULL_PAYLOADS=false
 SQL_REVIEW_MAX_CONCURRENT_RULES=6
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
 ---
@@ -255,9 +204,9 @@ Koruma ve anahtarlar için `docs/ADMIN_GUIDE.md` bölümlerine bakın.
 
 ## Güvenlik ve kurumsal ortam
 
-Üretimde tipik ayarlar: `LLM_ENFORCE_PRIVATE_NETWORK=true`, `LLM_LOG_FULL_PAYLOADS=false`, CORS ve `API_ACCESS_TOKEN` / `API_ADMIN_TOKEN` kurum politikasına göre. Kurumsal proxy için `LLM_HTTP_TRUST_ENV` ile birlikte ortam `HTTP(S)_PROXY` değerleri uyumlu olmalıdır. LLM istekleri sabit **User-Agent** kullanır (`LLM_HTTP_USER_AGENT` ile değiştirilebilir).
+Üretimde tipik ayarlar: `LLM_ENFORCE_PRIVATE_NETWORK=true`, `LLM_LOG_FULL_PAYLOADS=false`, CORS ve `API_ACCESS_TOKEN` / `API_ADMIN_TOKEN` kurum politikasına göre. Kurumsal proxy için `LLM_HTTP_TRUST_ENV` ile birlikte ortam `HTTP(S)_PROXY` değerleri uyumlu olmalıdır.
 
-EDR, DLP ve ağ izolasyonu için teknik notlar **[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)** içindeki *Kurumsal kontrollerle uyum* bölümündedir.
+EDR, DLP ve ağ izolasyonu için **[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)**.
 
 ---
 
@@ -265,11 +214,14 @@ EDR, DLP ve ağ izolasyonu için teknik notlar **[docs/ADMIN_GUIDE.md](docs/ADMI
 
 | Belirti | Olası çözüm |
 |---------|-------------|
-| `Node.js / npm not found` | Node.js LTS kurun, terminali yeniden açın |
-| `Failed to fetch` | Backend ayakta mı (`/api/health`); 8000/5173 port çakışmasını ve süreçleri kontrol edin |
-| LLM bağlantı hatası | `LLM_BASE_URL`, firewall, LM Studio dinleme adresi; private ağ politikası |
-| `ReadTimeout` | `SQL_REVIEW_MAX_CONCURRENT_RULES` düşürün; modelin yüklü olduğundan emin olun |
-| `All connection attempts failed` | Yanlış proxy: yerel LLM için `LLM_HTTP_TRUST_ENV=false` deneyin |
+| `docker` bulunamıyor | Docker Desktop kurulu ve çalışır olmalı |
+| `web` 502 / bekliyor | `docker compose logs backend`; healthcheck ve `.env` |
+| SQL bağlantı hatası | `host.docker.internal`; firewall; TCP port |
+| LLM bağlantı hatası | `LLM_BASE_URL`, LM Studio dinleme adresi; private ağ politikası |
+| `ReadTimeout` | `SQL_REVIEW_MAX_CONCURRENT_RULES` düşürün |
+| Port çakışması | 8080/8000 boş mu; `docker compose down` |
+
+Ayrıntılı tablo: [docs/DOCKER.md](docs/DOCKER.md).
 
 ---
 
@@ -277,16 +229,12 @@ EDR, DLP ve ağ izolasyonu için teknik notlar **[docs/ADMIN_GUIDE.md](docs/ADMI
 
 ```
 DWHCodeReview/
-├── backend/           # FastAPI uygulaması (+ Dockerfile)
-│   ├── main.py
-│   ├── config.py
-│   ├── data/          # İnceleme kuralları (ör. review_rules.json)
-│   ├── db/
-│   ├── models/
-│   └── services/
-├── frontend/          # React + Vite (+ Dockerfile, nginx.conf)
+├── backend/           # FastAPI (+ Dockerfile)
+├── frontend/          # React build (+ Dockerfile, nginx.conf)
 ├── docker-compose.yml
-├── docs/              # Kullanıcı ve yönetici kılavuzları
+├── start-docker.bat
+├── stop-docker.bat
+├── docs/
 └── README.md
 ```
 
@@ -294,14 +242,14 @@ DWHCodeReview/
 
 ## Kurulum sonrası doğrulama
 
-1. Arayüzde veritabanı seçimi yapılabiliyor mu?
-2. En az bir nesne veya script ile inceleme tamamlanıyor mu?
-3. Canlı ilerleme ve sonuç kartları görünüyor mu?
-4. CSV / SQL dışa aktarma beklendiği gibi mi?
+1. http://localhost:8080 açılıyor mu?
+2. Veritabanı listesi geliyor mu?
+3. İnceleme tamamlanıyor mu?
+4. CSV / SQL dışa aktarma çalışıyor mu?
 5. `/api/health` başarılı mı?
 
-Operasyonel onay için **[docs/KURULUM_CHECKLIST.md](docs/KURULUM_CHECKLIST.md)** kullanılabilir.
+Operasyonel onay: **[docs/KURULUM_CHECKLIST.md](docs/KURULUM_CHECKLIST.md)**.
 
 ---
 
-**Özet:** `backend/.env` ile SQL Server ve LLM’i yapılandırın; kökten `uvicorn`, `frontend` içinden `npm run dev` ile geliştirme ortamını çalıştırın; üretim ve güvenlik için **ADMIN_GUIDE** ve kontrol listesini takip edin.
+**Özet:** `backend/.env` → `docker compose up --build` → arayüz **:8080**. Güvenlik için **ADMIN_GUIDE** ve kontrol listesi.

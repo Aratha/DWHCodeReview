@@ -6,8 +6,8 @@ Kurulum, güvenlik, LLM ve veritabanı erişimi bu kapsamdadır.
 
 | Alan | Yönetici görevi |
 |------|------------------|
-| SQL Server | ODBC sürücüsü, bağlantı dizesi, firewall |
-| Backend | Python venv, `backend/.env`, servis çalıştırma |
+| SQL Server | ODBC sürücüsü, bağlantı dizesi, firewall (Docker’dan erişim yolu) |
+| Backend | `backend/.env`, `docker compose`, backend konteyneri |
 | LLM | LM Studio veya uyumlu sunucu, ağ erişimi, model yükleme |
 | Güvenlik | `API_ACCESS_TOKEN`, `LLM_ENFORCE_PRIVATE_NETWORK`, log ayarları |
 
@@ -49,12 +49,12 @@ Beklenen: `{"status":"ok","rules_api":true}`
 | **API** | `API_ACCESS_TOKEN` / `API_ADMIN_TOKEN` ile uçlar korunabilir. |
 | **Veri minimizasyonu** | `LLM_LOG_FULL_PAYLOADS=false` iken ham SQL/model gövdesi LLM günlük dosyasına yazılmaz. |
 | **DLP** | İnceleme sırasında SQL ve şema özeti, yapılandırmadaki LLM sunucusuna HTTP(S) ile iletilir; kurum DLP politikasına göre değerlendirilir. |
-| **EDR** | Backend: `python` / `uvicorn`; geliştirme ön yüzü: `node` / `vite`. Dosya erişimi çoğunlukla `backend/data` ve isteğe bağlı `backend/logs/llm`. |
+| **EDR** | Çalışma zamanı: Docker konteynerleri (`backend`, `web`/nginx). Kalıcı veri: `./backend/data` volume. |
 
 ## Sorun giderme
 
 - **LLM timeout / ReadTimeout:** Eşzamanlılığı düşürün; LM Studio’da modelin bellekte olduğundan emin olun; ağ gecikmesini kontrol edin.
 - **Bağlantı reddedildi:** Tailscale/firewall; LM Studio’nun doğru arayüzde dinlemesi.
-- **Eski API:** Eski `uvicorn` süreci kalmış olabilir; port 8000’i temizleyip `README.md` içindeki backend komutuyla yeniden başlatın.
+- **Servis yanıt vermiyor:** `docker compose ps`, `docker compose logs backend`, ardından `docker compose up --build -d`.
 
 Tam kurulum adımları için `README.md` ve operasyon onayı için `docs/KURULUM_CHECKLIST.md` dosyalarına bakın.

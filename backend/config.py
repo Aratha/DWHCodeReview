@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     llm_request_retries: int = 2
     # SQL bu karakter sayısını aşınca nesne iki parçada analiz edilir (bağlam taşması riskini azaltır).
     sql_review_two_part_threshold_chars: int = 45000
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
     # Boş değilse /api uçları X-API-Key ile korunur.
     api_access_token: str = ""
     # Boş değilse yönetim uçları (rules/llm-config/llm-logs) X-Admin-Key ister.

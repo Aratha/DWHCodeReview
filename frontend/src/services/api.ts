@@ -84,17 +84,14 @@ export type RulesState = {
 }
 
 const STALE_BACKEND_MSG =
-  'Sunucu bu API yolunu tanımıyor (404). Genelde güncellenmiş backend kodu çalışmıyordur ' +
-  '(eski uvicorn süreci). Süreci durdurup yeniden başlatın: proje kökünde ' +
-  '`python run_backend.py` veya backend klasöründe ' +
-  '`python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000`'
+  'Sunucu bu API yolunu tanımıyor (404). Backend imajı güncel değil veya konteyner ayakta değil. ' +
+  'Proje kökünde `docker compose up --build` çalıştırın.'
 
 /** /api/health yanıtında rules_api yoksa porttaki süreç kurallar öncesi kodu çalıştırıyordur. */
 const RULES_404_STALE_PROCESS_MSG =
-  '8000 portunda dinleyen süreç güncel değil: bu API sürümünde /api/health içinde "rules_api": true olmalı. ' +
-  'Genelde eski uvicorn arka planda kalmıştır. PowerShell: netstat -ano | findstr :8000 ile PID bulun, ' +
-  'Görev Yöneticisinde o işlemi sonlandırın; sonra proje kökünde `python run_backend.py` çalıştırın. ' +
-  'Doğrulama: tarayıcıda http://127.0.0.1:8000/ açıp JSON içinde "rules":"/api/rules" satırını görmelisiniz.'
+  'Backend güncel değil: bu sürümde /api/health içinde "rules_api": true olmalı. ' +
+  'Proje kökünde `docker compose up --build` ile yeniden başlatın. ' +
+  'Doğrulama: http://127.0.0.1:8000/api/health'
 
 function parseApiErrorText(status: number, text: string): string {
   if (status === 404) {
