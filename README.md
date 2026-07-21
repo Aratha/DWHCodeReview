@@ -2,7 +2,7 @@
 
 SQL Server üzerindeki nesneleri (stored procedure, view, function vb.) seçerek veya yapıştırılan SQL ile **yayımlanmış kurallara göre** LLM destekli inceleme yapan; sonuçları web arayüzünde gösteren ve **CSV / SQL** olarak dışa aktarmayı destekleyen kurumsal bir araçtır.
 
-Geliştirme için **Windows** üzerinde terminalden `uvicorn` ve `npm run dev` kullanılır (depoda toplu başlatıcı script yoktur). Üretimde ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
+Geliştirme için **Windows** üzerinde kökteki `.bat` dosyaları (çift tık) veya terminalden `uvicorn` + `npm run dev` kullanılır. Üretimde ortam değişkenleri ve ağ politikaları `docs/ADMIN_GUIDE.md` ile hizalanmalıdır.
 
 ---
 
@@ -110,9 +110,18 @@ Get-OdbcDriver | Where-Object { $_.Name -match "SQL Server" }
 
 ## Hızlı başlangıç
 
-Depoda `.ps1` / `.bat` gibi toplu başlatıcı dosyalar yoktur; geliştirme adımlarını doğrudan terminalden çalıştırın.
+### Windows (çift tık)
 
-### İlk kurulum (bir kez)
+| Dosya | Ne yapar |
+|-------|-----------|
+| `setup-local.bat` | Bir kez: `.env`, Python venv, `pip install`, `npm install` |
+| `start-app.bat` | Backend + frontend pencerelerini açar, tarayıcıyı açar |
+| `start-backend.bat` | Sadece API (`:8000`) |
+| `start-frontend.bat` | Sadece arayüz (`:5173`) |
+
+Önce `backend/.env` içinde SQL Server ve LLM ayarlarını doldurun (`setup-local.bat` örnek dosyayı kopyalar).
+
+### İlk kurulum (bir kez, terminal)
 
 Proje kökünde:
 
